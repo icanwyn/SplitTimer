@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Race Timer Pro</title>
+<title>Meet Timer Pro</title>
 
 <style>
 :root {
@@ -23,7 +23,7 @@ body {
 }
 
 .container {
-  max-width: 650px;
+  max-width: 750px;
   margin: auto;
   padding: 20px;
 }
@@ -47,7 +47,7 @@ button {
   border: none;
   border-radius: 16px;
   padding: 14px 20px;
-  margin: 8px 0;
+  margin: 6px 0;
   font-size: 1rem;
   cursor: pointer;
 }
@@ -71,21 +71,6 @@ button {
   border-radius: 24px;
 }
 
-button:active {
-  transform: scale(0.97);
-}
-
-input {
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-}
-
-#bibQuickInput {
-  width: 100%;
-  margin-top: 10px;
-}
-
 table {
   width: 100%;
   border-collapse: collapse;
@@ -101,9 +86,10 @@ td, th {
   background: rgba(255,149,0,0.15);
 }
 
-td[contenteditable="true"]:focus {
-  outline: 2px solid var(--accent);
-  background: #fff;
+.podium {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 10px;
 }
 </style>
 </head>
@@ -112,62 +98,64 @@ td[contenteditable="true"]:focus {
 
 <div class="container">
 
-  <h2>Race Timer</h2>
+<h2>Meet Timer Pro</h2>
 
-  <!-- TIMER -->
-  <div class="card">
-    <div class="timer" id="timer">00:00.000</div>
+<!-- TIMER -->
+<div class="card">
+  <div class="timer" id="timer">00:00.000</div>
 
-    <button class="primary" onclick="start()">Start</button>
-    <button onclick="stop()">Stop</button>
-    <button onclick="resetRace()">Reset</button>
-  </div>
+  <button class="primary" onclick="start()">Start</button>
+  <button onclick="stop()">Stop</button>
+  <button onclick="resetRace()">Reset</button>
+</div>
 
-  <!-- FINISH -->
-  <button class="finish" onclick="finish()">TAP FINISH</button>
+<!-- SELECTORS -->
+<div class="card">
+  <label>Event</label>
+  <select id="eventSelect" onchange="switchEvent(this.value)"></select>
 
-  <!-- CONTROLS -->
-  <div class="card">
+  <br><br>
 
-    <label style="display:flex; justify-content:space-between;">
-      <span>Assign Mode</span>
-      <input type="checkbox" id="assignMode" onchange="toggleAssignMode()" />
-    </label>
+  <label>Heat</label>
+  <select id="heatSelect" onchange="switchHeat(this.value)"></select>
+</div>
 
-    <br>
+<!-- CSV IMPORT -->
+<div class="card">
+  <b>Import Meet CSV</b><br><br>
+  <input type="file" accept=".csv" onchange="handleCSV(event)" />
+</div>
 
-    <label style="display:flex; justify-content:space-between;">
-      <span>Bib Quick Entry</span>
-      <input type="checkbox" id="bibMode" onchange="toggleBibMode()" />
-    </label>
+<!-- FINISH -->
+<button class="finish" onclick="finish()">TAP FINISH</button>
 
-    <input id="bibQuickInput"
-           placeholder="Scan or type bib → Enter"
-           style="display:none;"
-           onkeydown="handleBibEnter(event)" />
+<!-- CONTROLS -->
+<div class="card">
+  <button onclick="undo()">Undo Last</button>
+  <button onclick="newHeat()">New Heat</button>
+  <button onclick="exportCSV()">Export CSV</button>
+</div>
 
-    <br>
+<!-- PODIUM -->
+<div class="card" id="podium"></div>
 
-    <button onclick="undo()">Undo Last</button>
-    <button onclick="newRace()">New Race</button>
-    <button onclick="exportCSV()">Export CSV</button>
-
-  </div>
-
-  <!-- RESULTS -->
-  <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th>Place</th>
-          <th>Name</th>
-          <th>Bib</th>
-          <th>Time</th>
-        </tr>
-      </thead>
-      <tbody id="results"></tbody>
-    </table>
-  </div>
+<!-- RESULTS -->
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Place</th>
+        <th>Name</th>
+        <th>Grade</th>
+        <th>Gender</th>
+        <th>School</th>
+        <th>Bib</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="results"></tbody>
+  </table>
+</div>
 
 </div>
 
@@ -176,12 +164,23 @@ let startTime = null;
 let running = false;
 let interval = null;
 
-let assignMode = false;
-let bibMode = false;
-
-let data = JSON.parse(localStorage.getItem("raceData")) || {
-  races: [[]],
-  current: 0
+let data = JSON.parse(localStorage.getItem("meetData")) || {
+  events: [
+    {
+      name: "100m Dash",
+      heats: [
+        {
+          heatNumber: 1,
+          athletes: [
+            { name: "John Smith", grade: 7, gender: "M", school: "Miller", bib: "101", time: null },
+            { name: "Alex Kim", grade: 8, gender: "F", school: "Blach", bib: "102", time: null }
+          ]
+        }
+      ]
+    }
+  ],
+  currentEvent: 0,
+  currentHeat: 0
 };
 
 function format(ms) {
@@ -211,128 +210,208 @@ function stop() {
 function finish() {
   if (!running) return;
 
+  const heat = data.events[data.currentEvent].heats[data.currentHeat];
   const time = Date.now() - startTime;
-  const race = data.races[data.current];
 
-  race.push({
-    place: race.length + 1,
-    name: "",
-    bib: "",
-    time
-  });
+  const athlete = heat.athletes.find(a => a.time === null);
+  if (athlete) athlete.time = time;
 
   save();
   render();
-
-  if (assignMode) {
-    setTimeout(() => {
-      const rows = document.querySelectorAll("#results tr");
-      const last = rows[rows.length - 1];
-      if (last) last.children[1].focus();
-    }, 50);
-  }
 }
 
-function toggleAssignMode() {
-  assignMode = document.getElementById("assignMode").checked;
-}
-
-function toggleBibMode() {
-  bibMode = document.getElementById("bibMode").checked;
-  const input = document.getElementById("bibQuickInput");
-
-  input.style.display = bibMode ? "block" : "none";
-
-  if (bibMode) setTimeout(() => input.focus(), 50);
-}
-
-function handleBibEnter(e) {
-  if (e.key !== "Enter") return;
-
-  const value = e.target.value.trim();
-  if (!value) return;
-
-  const race = data.races[data.current];
-  const index = race.findIndex(r => !r.bib);
-
-  if (index !== -1) {
-    race[index].bib = value;
-  }
-
-  save();
-  render();
-
-  e.target.value = "";
-  setTimeout(() => e.target.focus(), 10);
-}
-
-function undo() {
-  const race = data.races[data.current];
-  race.pop();
-  save();
-  render();
-}
-
-function resetRace() {
-  data.races[data.current] = [];
-  save();
-  render();
-  document.getElementById("timer").textContent = "00:00.000";
-}
-
-function newRace() {
-  data.races.push([]);
-  data.current = data.races.length - 1;
-  save();
-  render();
-}
-
-function updateField(index, field, value) {
-  data.races[data.current][index][field] = value;
-  save();
+function getRanked(athletes) {
+  return [...athletes]
+    .filter(a => a.time !== null)
+    .sort((a,b) => a.time - b.time);
 }
 
 function render() {
-  const race = data.races[data.current];
+  const event = data.events[data.currentEvent];
+  const heat = event.heats[data.currentHeat];
+
+  const ranked = getRanked(heat.athletes);
+
   const tbody = document.getElementById("results");
   tbody.innerHTML = "";
 
-  race.forEach((r, i) => {
-    const missingBib = !r.bib;
-
+  ranked.forEach((a, i) => {
     tbody.innerHTML += `
-      <tr class="${missingBib ? 'unassigned' : ''}">
-        <td>${r.place}</td>
-        <td contenteditable="true" onblur="updateField(${i}, 'name', this.innerText)">
-          ${r.name}
-        </td>
-        <td contenteditable="true" onblur="updateField(${i}, 'bib', this.innerText)">
-          ${r.bib}
-        </td>
-        <td>${format(r.time)}</td>
-      </tr>`;
-  });
-}
-
-function save() {
-  localStorage.setItem("raceData", JSON.stringify(data));
-}
-
-function exportCSV() {
-  const race = data.races[data.current];
-  let csv = "Place,Name,Bib,Time\n";
-
-  race.forEach(r => {
-    csv += `${r.place},${r.name},${r.bib},${format(r.time)}\n`;
+      <tr style="${i<3 ? 'background:rgba(52,199,89,0.15);font-weight:600;' : ''}">
+        <td>${i+1}</td>
+        <td>${a.name}</td>
+        <td>${a.grade}</td>
+        <td>${a.gender}</td>
+        <td>${a.school}</td>
+        <td>${a.bib}</td>
+        <td>${format(a.time)}</td>
+      </tr>
+    `;
   });
 
-  const blob = new Blob([csv], {type: "text/csv"});
-  const url = URL.createObjectURL(blob);
+  renderPodium();
+  loadSelectors();
+}
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "race_results.csv";
+function renderPodium() {
+  const event = data.events[data.currentEvent];
+  const heat = event.heats[data.currentHeat];
+
+  const top = getRanked(heat.athletes).slice(0,3);
+  const p = document.getElementById("podium");
+
+  if (!top.length) {
+    p.innerHTML = "No results yet";
+    return;
+  }
+
+  p.innerHTML = `
+    <h3>${event.name} - Heat ${heat.heatNumber}</h3>
+    <div class="podium">
+      ${top.map((a,i)=>`
+        <div>
+          <div>${i===0?"🥇":i===1?"🥈":"🥉"}</div>
+          <div>${a.name}</div>
+          <div>${format(a.time)}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function loadSelectors() {
+  const e = document.getElementById("eventSelect");
+  const h = document.getElementById("heatSelect");
+
+  e.innerHTML = "";
+  h.innerHTML = "";
+
+  data.events.forEach((ev,i)=>{
+    e.innerHTML += `<option value="${i}">${ev.name}</option>`;
+  });
+
+  const event = data.events[data.currentEvent];
+
+  event.heats.forEach((ht,i)=>{
+    h.innerHTML += `<option value="${i}">Heat ${ht.heatNumber}</option>`;
+  });
+
+  e.value = data.currentEvent;
+  h.value = data.currentHeat;
+}
+
+function switchEvent(i){
+  data.currentEvent = +i;
+  data.currentHeat = 0;
+  save();
+  render();
+}
+
+function switchHeat(i){
+  data.currentHeat = +i;
+  save();
+  render();
+}
+
+function undo(){
+  const heat = data.events[data.currentEvent].heats[data.currentHeat];
+  const last = [...heat.athletes].reverse().find(a=>a.time!==null);
+  if (last) last.time = null;
+  save();
+  render();
+}
+
+function newHeat(){
+  const event = data.events[data.currentEvent];
+  event.heats.push({
+    heatNumber: event.heats.length+1,
+    athletes:[]
+  });
+  save();
+  render();
+}
+
+function resetRace(){
+  stop();
+  startTime = null;
+  document.getElementById("timer").textContent="00:00.000";
+}
+
+function save(){
+  localStorage.setItem("meetData", JSON.stringify(data));
+}
+
+function exportCSV(){
+  const heat = data.events[data.currentEvent].heats[data.currentHeat];
+
+  let csv="Place,Name,Grade,Gender,School,Bib,Time\n";
+
+  getRanked(heat.athletes).forEach((a,i)=>{
+    csv+=`${i+1},${a.name},${a.grade},${a.gender},${a.school},${a.bib},${format(a.time)}\n`;
+  });
+
+  const blob=new Blob([csv],{type:"text/csv"});
+  const url=URL.createObjectURL(blob);
+
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="results.csv";
   a.click();
+}
+
+/* CSV IMPORT */
+function handleCSV(e){
+  const file=e.target.files[0];
+  const reader=new FileReader();
+
+  reader.onload=function(ev){
+    const lines=ev.target.result.trim().split("\n");
+    const headers=lines[0].split(",");
+
+    const map={};
+
+    for(let i=1;i<lines.length;i++){
+      const row=lines[i].split(",");
+      let obj={};
+
+      headers.forEach((h,idx)=>obj[h.trim()]=row[idx].trim());
+
+      const evn=obj.event;
+
+      if(!map[evn]){
+        map[evn]={name:evn,heats:{}};
+      }
+
+      if(!map[evn].heats[obj.heat]){
+        map[evn].heats[obj.heat]={
+          heatNumber:+obj.heat,
+          athletes:[]
+        };
+      }
+
+      map[evn].heats[obj.heat].athletes.push({
+        name:obj.name,
+        grade:obj.grade,
+        gender:obj.gender,
+        school:obj.school,
+        bib:obj.bib,
+        time:null
+      });
+    }
+
+    data.events=Object.values(map).map(e=>({
+      name:e.name,
+      heats:Object.values(e.heats)
+    }));
+
+    data.currentEvent=0;
+    data.currentHeat=0;
+
+    save();
+    render();
+  };
+
+  reader.readAsText(file);
 }
 
 render();
