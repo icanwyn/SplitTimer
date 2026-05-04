@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Meet Control Pro</title>
+<title>Race Timer Pro</title>
 
 <style>
 :root {
   --bg: #f5f5f7;
-  --card: rgba(255,255,255,0.75);
+  --card: rgba(255,255,255,0.7);
   --border: rgba(0,0,0,0.08);
   --text: #1d1d1f;
   --accent: #007aff;
@@ -23,7 +23,7 @@ body {
 }
 
 .container {
-  max-width: 850px;
+  max-width: 650px;
   margin: auto;
   padding: 20px;
 }
@@ -38,34 +38,28 @@ body {
 }
 
 .timer {
-  font-size: 3rem;
+  font-size: 3.2rem;
   font-weight: 600;
+  margin: 10px 0;
 }
 
 button {
   border: none;
-  border-radius: 16px;
-  padding: 14px 18px;
-  margin: 6px 0;
+  border-radius: 14px;
+  padding: 14px 20px;
+  margin: 5px;
+  font-size: 1rem;
   cursor: pointer;
 }
 
-.primary {
-  width: 100%;
-  height: 90px;
-  font-size: 1.6rem;
-  background: var(--accent);
-  color: white;
-  font-weight: 600;
-}
+.primary { background: var(--accent); color: white; }
 
 .finish {
   width: 100%;
-  height: 240px;
-  font-size: 3rem;
+  height: 160px;
+  font-size: 2.2rem;
   background: #34c759;
   color: white;
-  border-radius: 24px;
 }
 
 table {
@@ -79,15 +73,13 @@ td, th {
   border-bottom: 1px solid var(--border);
 }
 
-.active {
-  background: rgba(0,122,255,0.12);
-  font-weight: 600;
+.unassigned {
+  background: rgba(255,149,0,0.15);
 }
 
-.podium {
-  display: flex;
-  justify-content: space-around;
-  margin-top: 10px;
+td[contenteditable="true"]:focus {
+  outline: 2px solid var(--accent);
+  background: #fff;
 }
 </style>
 </head>
@@ -96,330 +88,184 @@ td, th {
 
 <div class="container">
 
-<h2>Meet Control Pro</h2>
+  <h2>Race Timer</h2>
 
-<!-- TIMER -->
-<div class="card">
-  <div class="timer" id="timer">00:00.000</div>
+  <!-- TIMER -->
+  <div class="card">
+    <div class="timer" id="timer">00:00.000</div>
 
-  <button class="primary" onclick="start()">Start</button>
-  <button onclick="stop()">Stop</button>
-  <button onclick="resetRace()">Reset</button>
-</div>
+    <button class="primary" onclick="start()">Start</button>
+    <button onclick="stop()">Stop</button>
+    <button onclick="resetRace()">Reset</button>
+  </div>
 
-<!-- EVENT / HEAT -->
-<div class="card">
-  <label>Event</label>
-  <select id="eventSelect" onchange="switchEvent(this.value)"></select>
+  <!-- FINISH BUTTON -->
+  <button class="finish" onclick="finish()">TAP FINISH</button>
 
-  <br><br>
+  <!-- CONTROLS -->
+  <div class="card">
+    <label style="display:flex; justify-content:space-between; align-items:center;">
+      <span>Assign Mode</span>
+      <input type="checkbox" id="assignMode" onchange="toggleAssignMode()" />
+    </label>
 
-  <label>Heat</label>
-  <select id="heatSelect" onchange="switchHeat(this.value)"></select>
-</div>
+    <br>
 
-<!-- CSV IMPORT -->
-<div class="card">
-  <b>Import Meet CSV</b><br><br>
+    <button onclick="undo()">Undo Last</button>
+    <button onclick="newRace()">New Race</button>
+    <button onclick="exportCSV()">Export CSV</button>
+  </div>
 
-  <input type="file" id="csvFile" accept=".csv" />
-
-  <button onclick="previewCSV()" style="width:100%; background:#007aff; color:white;">
-    Preview CSV
-  </button>
-
-  <div id="csvPreview"></div>
-
-  <button id="confirmBtn" onclick="confirmImport()" style="display:none; width:100%; background:#34c759; color:white;">
-    Confirm Import
-  </button>
-</div>
-
-<!-- FINISH -->
-<button class="finish" onclick="finish()">TAP FINISH</button>
-
-<!-- CONTROL -->
-<div class="card">
-  <button onclick="undo()">Undo Last</button>
-  <button onclick="exportCSV()">Export CSV</button>
-</div>
-
-<!-- PODIUM -->
-<div class="card" id="podium"></div>
-
-<!-- LIVE TABLE -->
-<div class="card">
-<table>
-<thead>
-<tr>
-  <th>#</th>
-  <th>Name</th>
-  <th>Grade</th>
-  <th>Gender</th>
-  <th>School</th>
-  <th>Bib</th>
-  <th>Time</th>
-</tr>
-</thead>
-<tbody id="results"></tbody>
-</table>
-</div>
+  <!-- RESULTS -->
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Place</th>
+          <th>Name</th>
+          <th>Bib</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="results"></tbody>
+    </table>
+  </div>
 
 </div>
 
 <script>
-let startTime=null;
-let running=false;
-let interval=null;
+let startTime = null;
+let running = false;
+let interval = null;
 
-let parsedPreview=null;
+let assignMode = false;
 
-let data=JSON.parse(localStorage.getItem("meetData"))||{
-  events:[],
-  currentEvent:0,
-  currentHeat:0
+let data = JSON.parse(localStorage.getItem("raceData")) || {
+  races: [[]],
+  current: 0
 };
 
-/* ---------------- TIMER ---------------- */
-function format(ms){
-  const m=Math.floor(ms/60000);
-  const s=Math.floor((ms%60000)/1000);
-  const ms2=ms%1000;
+function format(ms) {
+  const m = Math.floor(ms/60000);
+  const s = Math.floor((ms%60000)/1000);
+  const ms2 = ms%1000;
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms2).padStart(3,'0')}`;
 }
 
-function start(){
-  if(running) return;
-  running=true;
-  startTime=Date.now();
-  interval=setInterval(()=> {
-    document.getElementById("timer").textContent=format(Date.now()-startTime);
-  },30);
+function tick() {
+  if (!running) return;
+  document.getElementById("timer").textContent = format(Date.now() - startTime);
 }
 
-function stop(){
-  running=false;
+function start() {
+  if (running) return;
+  running = true;
+  startTime = Date.now();
+  interval = setInterval(tick, 30);
+}
+
+function stop() {
+  running = false;
   clearInterval(interval);
 }
 
-/* ---------------- FINISH ---------------- */
-function finish(){
-  if(!running) return;
+function finish() {
+  if (!running) return;
 
-  const heat=currentHeat();
-  const athlete=heat.athletes.find(a=>a.time===null);
+  const time = Date.now() - startTime;
+  const race = data.races[data.current];
 
-  if(athlete){
-    athlete.time=Date.now()-startTime;
+  race.push({
+    place: race.length + 1,
+    name: "",
+    bib: "",
+    time
+  });
+
+  save();
+  render();
+
+  // jump to edit if assign mode
+  if (assignMode) {
+    setTimeout(() => {
+      const rows = document.querySelectorAll("#results tr");
+      const lastRow = rows[rows.length - 1];
+      if (lastRow) lastRow.children[1].focus();
+    }, 50);
   }
+}
 
+function toggleAssignMode() {
+  assignMode = document.getElementById("assignMode").checked;
+}
+
+function undo() {
+  const race = data.races[data.current];
+  race.pop();
   save();
   render();
 }
 
-/* ---------------- DATA ---------------- */
-function currentEvent(){
-  return data.events[data.currentEvent];
+function resetRace() {
+  data.races[data.current] = [];
+  save();
+  render();
+  document.getElementById("timer").textContent = "00:00.000";
 }
 
-function currentHeat(){
-  return currentEvent().heats[data.currentHeat];
+function newRace() {
+  data.races.push([]);
+  data.current = data.races.length - 1;
+  save();
+  render();
 }
 
-/* ---------------- RENDER ---------------- */
-function render(){
-  const heat=currentHeat();
-  const tbody=document.getElementById("results");
-  tbody.innerHTML="";
+function updateField(index, field, value) {
+  data.races[data.current][index][field] = value;
+  save();
+}
 
-  const ranked=[...heat.athletes]
-    .filter(a=>a.time!==null)
-    .sort((a,b)=>a.time-b.time);
+function render() {
+  const race = data.races[data.current];
+  const tbody = document.getElementById("results");
+  tbody.innerHTML = "";
 
-  ranked.forEach((a,i)=>{
-    tbody.innerHTML+=`
-      <tr style="${i<3?'background:rgba(52,199,89,0.15);font-weight:600;':''}">
-        <td>${i+1}</td>
-        <td>${a.name}</td>
-        <td>${a.grade}</td>
-        <td>${a.gender}</td>
-        <td>${a.school}</td>
-        <td>${a.bib}</td>
-        <td>${format(a.time)}</td>
+  race.forEach((r, i) => {
+    const isEmpty = !r.name && !r.bib;
+
+    tbody.innerHTML += `
+      <tr class="${isEmpty ? 'unassigned' : ''}">
+        <td>${r.place}</td>
+        <td contenteditable="true" onblur="updateField(${i}, 'name', this.innerText)">
+          ${r.name}
+        </td>
+        <td contenteditable="true" onblur="updateField(${i}, 'bib', this.innerText)">
+          ${r.bib}
+        </td>
+        <td>${format(r.time)}</td>
       </tr>`;
   });
-
-  renderPodium();
-  loadSelectors();
 }
 
-/* ---------------- PODIUM ---------------- */
-function renderPodium(){
-  const heat=currentHeat();
-
-  const top=[...heat.athletes]
-    .filter(a=>a.time!==null)
-    .sort((a,b)=>a.time-b.time)
-    .slice(0,3);
-
-  document.getElementById("podium").innerHTML=`
-    <h3>Podium</h3>
-    <div class="podium">
-      ${top.map((a,i)=>`
-        <div>
-          <div>${i===0?"🥇":i===1?"🥈":"🥉"}</div>
-          <div>${a.name}</div>
-          <div>${format(a.time)}</div>
-        </div>
-      `).join("")}
-    </div>
-  `;
+function save() {
+  localStorage.setItem("raceData", JSON.stringify(data));
 }
 
-/* ---------------- CSV SAFE PARSER ---------------- */
-function parseLine(line){
-  const res=[];
-  let cur="";
-  let q=false;
+function exportCSV() {
+  const race = data.races[data.current];
+  let csv = "Place,Name,Bib,Time\n";
 
-  for(let i=0;i<line.length;i++){
-    const c=line[i];
-
-    if(c=='"'&&line[i+1]=='"'){cur+='"';i++;continue;}
-    if(c=='"'){q=!q;continue;}
-    if(c==','&&!q){res.push(cur);cur="";continue;}
-
-    cur+=c;
-  }
-  res.push(cur);
-  return res;
-}
-
-function buildMeet(text){
-  const lines=text.replace(/^\uFEFF/,'').trim().split(/\r?\n/);
-  const headers=parseLine(lines[0]).map(h=>h.toLowerCase());
-
-  const map={};
-
-  for(let i=1;i<lines.length;i++){
-    const row=parseLine(lines[i]);
-
-    const o={};
-    headers.forEach((h,j)=>o[h]=row[j]||"");
-
-    const event=o.event;
-    const heat=o.heat;
-    const name=o.name;
-
-    if(!event||!heat||!name) continue;
-
-    if(!map[event]) map[event]={name:event,heats:{}};
-    if(!map[event].heats[heat])
-      map[event].heats[heat]={heatNumber:+heat,athletes:[]};
-
-    map[event].heats[heat].athletes.push({
-      name,
-      grade:o.grade||"",
-      gender:o.gender||"",
-      school:o.school||"",
-      bib:o.bib||"",
-      time:null
-    });
-  }
-
-  return Object.values(map).map(e=>({
-    name:e.name,
-    heats:Object.values(e.heats)
-  }));
-}
-
-/* ---------------- PREVIEW ---------------- */
-function previewCSV(){
-  const file=document.getElementById("csvFile").files[0];
-  if(!file) return alert("Select file");
-
-  const reader=new FileReader();
-  reader.onload=e=>{
-    parsedPreview=buildMeet(e.target.result);
-    document.getElementById("csvPreview").innerHTML="✔ Preview loaded";
-    document.getElementById("confirmBtn").style.display="block";
-  };
-  reader.readAsText(file);
-}
-
-function confirmImport(){
-  data.events=parsedPreview;
-  data.currentEvent=0;
-  data.currentHeat=0;
-  save();
-  render();
-}
-
-/* ---------------- SELECTORS ---------------- */
-function loadSelectors(){
-  const e=document.getElementById("eventSelect");
-  const h=document.getElementById("heatSelect");
-
-  e.innerHTML="";
-  h.innerHTML="";
-
-  data.events.forEach((ev,i)=>{
-    e.innerHTML+=`<option value="${i}">${ev.name}</option>`;
+  race.forEach(r => {
+    csv += `${r.place},${r.name},${r.bib},${format(r.time)}\n`;
   });
 
-  currentEvent().heats.forEach((ht,i)=>{
-    h.innerHTML+=`<option value="${i}">Heat ${ht.heatNumber}</option>`;
-  });
+  const blob = new Blob([csv], {type: "text/csv"});
+  const url = URL.createObjectURL(blob);
 
-  e.value=data.currentEvent;
-  h.value=data.currentHeat;
-}
-
-function switchEvent(i){
-  data.currentEvent=+i;
-  data.currentHeat=0;
-  save();
-  render();
-}
-
-function switchHeat(i){
-  data.currentHeat=+i;
-  save();
-  render();
-}
-
-/* ---------------- OTHER ---------------- */
-function undo(){
-  const heat=currentHeat();
-  const last=[...heat.athletes].reverse().find(a=>a.time!==null);
-  if(last) last.time=null;
-  save();
-  render();
-}
-
-function exportCSV(){
-  const heat=currentHeat();
-
-  let csv="Place,Name,Grade,Gender,School,Bib,Time\n";
-
-  [...heat.athletes]
-    .filter(a=>a.time!==null)
-    .sort((a,b)=>a.time-b.time)
-    .forEach((a,i)=>{
-      csv+=`${i+1},${a.name},${a.grade},${a.gender},${a.school},${a.bib},${format(a.time)}\n`;
-    });
-
-  const blob=new Blob([csv],{type:"text/csv"});
-  const url=URL.createObjectURL(blob);
-
-  const a=document.createElement("a");
-  a.href=url;
-  a.download="results.csv";
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "race_results.csv";
   a.click();
-}
-
-function save(){
-  localStorage.setItem("meetData",JSON.stringify(data));
 }
 
 render();
