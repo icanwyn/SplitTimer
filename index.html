@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Meet Timer Pro</title>
+<title>Meet Control Pro</title>
 
 <style>
 :root {
   --bg: #f5f5f7;
-  --card: rgba(255,255,255,0.7);
+  --card: rgba(255,255,255,0.75);
   --border: rgba(0,0,0,0.08);
   --text: #1d1d1f;
   --accent: #007aff;
@@ -23,7 +23,7 @@ body {
 }
 
 .container {
-  max-width: 750px;
+  max-width: 850px;
   margin: auto;
   padding: 20px;
 }
@@ -38,34 +38,31 @@ body {
 }
 
 .timer {
-  font-size: 3.2rem;
+  font-size: 3rem;
   font-weight: 600;
-  margin: 10px 0;
 }
 
 button {
   border: none;
   border-radius: 16px;
-  padding: 14px 20px;
+  padding: 14px 18px;
   margin: 6px 0;
-  font-size: 1rem;
   cursor: pointer;
 }
 
 .primary {
-  background: var(--accent);
-  color: white;
   width: 100%;
   height: 90px;
   font-size: 1.6rem;
+  background: var(--accent);
+  color: white;
   font-weight: 600;
 }
 
 .finish {
   width: 100%;
-  height: 260px;
+  height: 240px;
   font-size: 3rem;
-  font-weight: 700;
   background: #34c759;
   color: white;
   border-radius: 24px;
@@ -82,8 +79,9 @@ td, th {
   border-bottom: 1px solid var(--border);
 }
 
-.unassigned {
-  background: rgba(255,149,0,0.15);
+.active {
+  background: rgba(0,122,255,0.12);
+  font-weight: 600;
 }
 
 .podium {
@@ -98,7 +96,7 @@ td, th {
 
 <div class="container">
 
-<h2>Meet Timer Pro</h2>
+<h2>Meet Control Pro</h2>
 
 <!-- TIMER -->
 <div class="card">
@@ -109,7 +107,7 @@ td, th {
   <button onclick="resetRace()">Reset</button>
 </div>
 
-<!-- SELECTORS -->
+<!-- EVENT / HEAT -->
 <div class="card">
   <label>Event</label>
   <select id="eventSelect" onchange="switchEvent(this.value)"></select>
@@ -123,121 +121,124 @@ td, th {
 <!-- CSV IMPORT -->
 <div class="card">
   <b>Import Meet CSV</b><br><br>
-  <input type="file" accept=".csv" onchange="handleCSV(event)" />
+
+  <input type="file" id="csvFile" accept=".csv" />
+
+  <button onclick="previewCSV()" style="width:100%; background:#007aff; color:white;">
+    Preview CSV
+  </button>
+
+  <div id="csvPreview"></div>
+
+  <button id="confirmBtn" onclick="confirmImport()" style="display:none; width:100%; background:#34c759; color:white;">
+    Confirm Import
+  </button>
 </div>
 
 <!-- FINISH -->
 <button class="finish" onclick="finish()">TAP FINISH</button>
 
-<!-- CONTROLS -->
+<!-- CONTROL -->
 <div class="card">
   <button onclick="undo()">Undo Last</button>
-  <button onclick="newHeat()">New Heat</button>
   <button onclick="exportCSV()">Export CSV</button>
 </div>
 
 <!-- PODIUM -->
 <div class="card" id="podium"></div>
 
-<!-- RESULTS -->
+<!-- LIVE TABLE -->
 <div class="card">
-  <table>
-    <thead>
-      <tr>
-        <th>Place</th>
-        <th>Name</th>
-        <th>Grade</th>
-        <th>Gender</th>
-        <th>School</th>
-        <th>Bib</th>
-        <th>Time</th>
-      </tr>
-    </thead>
-    <tbody id="results"></tbody>
-  </table>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>Name</th>
+  <th>Grade</th>
+  <th>Gender</th>
+  <th>School</th>
+  <th>Bib</th>
+  <th>Time</th>
+</tr>
+</thead>
+<tbody id="results"></tbody>
+</table>
 </div>
 
 </div>
 
 <script>
-let startTime = null;
-let running = false;
-let interval = null;
+let startTime=null;
+let running=false;
+let interval=null;
 
-let data = JSON.parse(localStorage.getItem("meetData")) || {
-  events: [
-    {
-      name: "100m Dash",
-      heats: [
-        {
-          heatNumber: 1,
-          athletes: [
-            { name: "John Smith", grade: 7, gender: "M", school: "Miller", bib: "101", time: null },
-            { name: "Alex Kim", grade: 8, gender: "F", school: "Blach", bib: "102", time: null }
-          ]
-        }
-      ]
-    }
-  ],
-  currentEvent: 0,
-  currentHeat: 0
+let parsedPreview=null;
+
+let data=JSON.parse(localStorage.getItem("meetData"))||{
+  events:[],
+  currentEvent:0,
+  currentHeat:0
 };
 
-function format(ms) {
-  const m = Math.floor(ms/60000);
-  const s = Math.floor((ms%60000)/1000);
-  const ms2 = ms%1000;
+/* ---------------- TIMER ---------------- */
+function format(ms){
+  const m=Math.floor(ms/60000);
+  const s=Math.floor((ms%60000)/1000);
+  const ms2=ms%1000;
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms2).padStart(3,'0')}`;
 }
 
-function tick() {
-  if (!running) return;
-  document.getElementById("timer").textContent = format(Date.now() - startTime);
+function start(){
+  if(running) return;
+  running=true;
+  startTime=Date.now();
+  interval=setInterval(()=> {
+    document.getElementById("timer").textContent=format(Date.now()-startTime);
+  },30);
 }
 
-function start() {
-  if (running) return;
-  running = true;
-  startTime = Date.now();
-  interval = setInterval(tick, 30);
-}
-
-function stop() {
-  running = false;
+function stop(){
+  running=false;
   clearInterval(interval);
 }
 
-function finish() {
-  if (!running) return;
+/* ---------------- FINISH ---------------- */
+function finish(){
+  if(!running) return;
 
-  const heat = data.events[data.currentEvent].heats[data.currentHeat];
-  const time = Date.now() - startTime;
+  const heat=currentHeat();
+  const athlete=heat.athletes.find(a=>a.time===null);
 
-  const athlete = heat.athletes.find(a => a.time === null);
-  if (athlete) athlete.time = time;
+  if(athlete){
+    athlete.time=Date.now()-startTime;
+  }
 
   save();
   render();
 }
 
-function getRanked(athletes) {
-  return [...athletes]
-    .filter(a => a.time !== null)
-    .sort((a,b) => a.time - b.time);
+/* ---------------- DATA ---------------- */
+function currentEvent(){
+  return data.events[data.currentEvent];
 }
 
-function render() {
-  const event = data.events[data.currentEvent];
-  const heat = event.heats[data.currentHeat];
+function currentHeat(){
+  return currentEvent().heats[data.currentHeat];
+}
 
-  const ranked = getRanked(heat.athletes);
+/* ---------------- RENDER ---------------- */
+function render(){
+  const heat=currentHeat();
+  const tbody=document.getElementById("results");
+  tbody.innerHTML="";
 
-  const tbody = document.getElementById("results");
-  tbody.innerHTML = "";
+  const ranked=[...heat.athletes]
+    .filter(a=>a.time!==null)
+    .sort((a,b)=>a.time-b.time);
 
-  ranked.forEach((a, i) => {
-    tbody.innerHTML += `
-      <tr style="${i<3 ? 'background:rgba(52,199,89,0.15);font-weight:600;' : ''}">
+  ranked.forEach((a,i)=>{
+    tbody.innerHTML+=`
+      <tr style="${i<3?'background:rgba(52,199,89,0.15);font-weight:600;':''}">
         <td>${i+1}</td>
         <td>${a.name}</td>
         <td>${a.grade}</td>
@@ -245,28 +246,24 @@ function render() {
         <td>${a.school}</td>
         <td>${a.bib}</td>
         <td>${format(a.time)}</td>
-      </tr>
-    `;
+      </tr>`;
   });
 
   renderPodium();
   loadSelectors();
 }
 
-function renderPodium() {
-  const event = data.events[data.currentEvent];
-  const heat = event.heats[data.currentHeat];
+/* ---------------- PODIUM ---------------- */
+function renderPodium(){
+  const heat=currentHeat();
 
-  const top = getRanked(heat.athletes).slice(0,3);
-  const p = document.getElementById("podium");
+  const top=[...heat.athletes]
+    .filter(a=>a.time!==null)
+    .sort((a,b)=>a.time-b.time)
+    .slice(0,3);
 
-  if (!top.length) {
-    p.innerHTML = "No results yet";
-    return;
-  }
-
-  p.innerHTML = `
-    <h3>${event.name} - Heat ${heat.heatNumber}</h3>
+  document.getElementById("podium").innerHTML=`
+    <h3>Podium</h3>
     <div class="podium">
       ${top.map((a,i)=>`
         <div>
@@ -279,76 +276,138 @@ function renderPodium() {
   `;
 }
 
-function loadSelectors() {
-  const e = document.getElementById("eventSelect");
-  const h = document.getElementById("heatSelect");
+/* ---------------- CSV SAFE PARSER ---------------- */
+function parseLine(line){
+  const res=[];
+  let cur="";
+  let q=false;
 
-  e.innerHTML = "";
-  h.innerHTML = "";
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+
+    if(c=='"'&&line[i+1]=='"'){cur+='"';i++;continue;}
+    if(c=='"'){q=!q;continue;}
+    if(c==','&&!q){res.push(cur);cur="";continue;}
+
+    cur+=c;
+  }
+  res.push(cur);
+  return res;
+}
+
+function buildMeet(text){
+  const lines=text.replace(/^\uFEFF/,'').trim().split(/\r?\n/);
+  const headers=parseLine(lines[0]).map(h=>h.toLowerCase());
+
+  const map={};
+
+  for(let i=1;i<lines.length;i++){
+    const row=parseLine(lines[i]);
+
+    const o={};
+    headers.forEach((h,j)=>o[h]=row[j]||"");
+
+    const event=o.event;
+    const heat=o.heat;
+    const name=o.name;
+
+    if(!event||!heat||!name) continue;
+
+    if(!map[event]) map[event]={name:event,heats:{}};
+    if(!map[event].heats[heat])
+      map[event].heats[heat]={heatNumber:+heat,athletes:[]};
+
+    map[event].heats[heat].athletes.push({
+      name,
+      grade:o.grade||"",
+      gender:o.gender||"",
+      school:o.school||"",
+      bib:o.bib||"",
+      time:null
+    });
+  }
+
+  return Object.values(map).map(e=>({
+    name:e.name,
+    heats:Object.values(e.heats)
+  }));
+}
+
+/* ---------------- PREVIEW ---------------- */
+function previewCSV(){
+  const file=document.getElementById("csvFile").files[0];
+  if(!file) return alert("Select file");
+
+  const reader=new FileReader();
+  reader.onload=e=>{
+    parsedPreview=buildMeet(e.target.result);
+    document.getElementById("csvPreview").innerHTML="✔ Preview loaded";
+    document.getElementById("confirmBtn").style.display="block";
+  };
+  reader.readAsText(file);
+}
+
+function confirmImport(){
+  data.events=parsedPreview;
+  data.currentEvent=0;
+  data.currentHeat=0;
+  save();
+  render();
+}
+
+/* ---------------- SELECTORS ---------------- */
+function loadSelectors(){
+  const e=document.getElementById("eventSelect");
+  const h=document.getElementById("heatSelect");
+
+  e.innerHTML="";
+  h.innerHTML="";
 
   data.events.forEach((ev,i)=>{
-    e.innerHTML += `<option value="${i}">${ev.name}</option>`;
+    e.innerHTML+=`<option value="${i}">${ev.name}</option>`;
   });
 
-  const event = data.events[data.currentEvent];
-
-  event.heats.forEach((ht,i)=>{
-    h.innerHTML += `<option value="${i}">Heat ${ht.heatNumber}</option>`;
+  currentEvent().heats.forEach((ht,i)=>{
+    h.innerHTML+=`<option value="${i}">Heat ${ht.heatNumber}</option>`;
   });
 
-  e.value = data.currentEvent;
-  h.value = data.currentHeat;
+  e.value=data.currentEvent;
+  h.value=data.currentHeat;
 }
 
 function switchEvent(i){
-  data.currentEvent = +i;
-  data.currentHeat = 0;
+  data.currentEvent=+i;
+  data.currentHeat=0;
   save();
   render();
 }
 
 function switchHeat(i){
-  data.currentHeat = +i;
+  data.currentHeat=+i;
   save();
   render();
 }
 
+/* ---------------- OTHER ---------------- */
 function undo(){
-  const heat = data.events[data.currentEvent].heats[data.currentHeat];
-  const last = [...heat.athletes].reverse().find(a=>a.time!==null);
-  if (last) last.time = null;
+  const heat=currentHeat();
+  const last=[...heat.athletes].reverse().find(a=>a.time!==null);
+  if(last) last.time=null;
   save();
   render();
-}
-
-function newHeat(){
-  const event = data.events[data.currentEvent];
-  event.heats.push({
-    heatNumber: event.heats.length+1,
-    athletes:[]
-  });
-  save();
-  render();
-}
-
-function resetRace(){
-  stop();
-  startTime = null;
-  document.getElementById("timer").textContent="00:00.000";
-}
-
-function save(){
-  localStorage.setItem("meetData", JSON.stringify(data));
 }
 
 function exportCSV(){
-  const heat = data.events[data.currentEvent].heats[data.currentHeat];
+  const heat=currentHeat();
 
   let csv="Place,Name,Grade,Gender,School,Bib,Time\n";
 
-  getRanked(heat.athletes).forEach((a,i)=>{
-    csv+=`${i+1},${a.name},${a.grade},${a.gender},${a.school},${a.bib},${format(a.time)}\n`;
-  });
+  [...heat.athletes]
+    .filter(a=>a.time!==null)
+    .sort((a,b)=>a.time-b.time)
+    .forEach((a,i)=>{
+      csv+=`${i+1},${a.name},${a.grade},${a.gender},${a.school},${a.bib},${format(a.time)}\n`;
+    });
 
   const blob=new Blob([csv],{type:"text/csv"});
   const url=URL.createObjectURL(blob);
@@ -359,59 +418,8 @@ function exportCSV(){
   a.click();
 }
 
-/* CSV IMPORT */
-function handleCSV(e){
-  const file=e.target.files[0];
-  const reader=new FileReader();
-
-  reader.onload=function(ev){
-    const lines=ev.target.result.trim().split("\n");
-    const headers=lines[0].split(",");
-
-    const map={};
-
-    for(let i=1;i<lines.length;i++){
-      const row=lines[i].split(",");
-      let obj={};
-
-      headers.forEach((h,idx)=>obj[h.trim()]=row[idx].trim());
-
-      const evn=obj.event;
-
-      if(!map[evn]){
-        map[evn]={name:evn,heats:{}};
-      }
-
-      if(!map[evn].heats[obj.heat]){
-        map[evn].heats[obj.heat]={
-          heatNumber:+obj.heat,
-          athletes:[]
-        };
-      }
-
-      map[evn].heats[obj.heat].athletes.push({
-        name:obj.name,
-        grade:obj.grade,
-        gender:obj.gender,
-        school:obj.school,
-        bib:obj.bib,
-        time:null
-      });
-    }
-
-    data.events=Object.values(map).map(e=>({
-      name:e.name,
-      heats:Object.values(e.heats)
-    }));
-
-    data.currentEvent=0;
-    data.currentHeat=0;
-
-    save();
-    render();
-  };
-
-  reader.readAsText(file);
+function save(){
+  localStorage.setItem("meetData",JSON.stringify(data));
 }
 
 render();
